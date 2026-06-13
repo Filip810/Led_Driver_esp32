@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RGB LED Controller</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#0f0f1a;color:#dde;min-height:100vh;display:flex;justify-content:center;padding:20px}
+.card{background:#1a1a2e;border-radius:18px;padding:26px;width:100%;max-width:420px;height:fit-content;box-shadow:0 12px 40px #0008}
+h1{text-align:center;font-size:1.3rem;color:#8ab4f8;margin-bottom:22px;letter-spacing:.03em}
+.section{margin-bottom:20px}
+.label{font-size:.72rem;text-transform:uppercase;letter-spacing:.1em;color:#667;margin-bottom:8px}
+
+/* power row */
+.row{display:flex;align-items:center;justify-content:space-between}
+.toggle{position:relative;width:54px;height:27px;cursor:pointer}
+.toggle input{opacity:0;width:0;height:0}
+.track{position:absolute;inset:0;background:#2a2a3e;border-radius:27px;transition:background .2s}
+.track::before{content:'';position:absolute;width:21px;height:21px;left:3px;top:3px;background:#888;border-radius:50%;transition:transform .2s,background .2s}
+.toggle input:checked+.track{background:#1e6b3e}
+.toggle input:checked+.track::before{transform:translateX(27px);background:#4ade80}
+
+/* preview */
+#preview{width:100%;height:72px;border-radius:12px;background:#ff0000;transition:background .1s;border:2px solid #ffffff10}
+
+/* color picker */
+input[type=color]{width:100%;height:44px;border:none;border-radius:8px;cursor:pointer;padding:3px;background:#0f3460}
+
+/* sliders */
+.srow{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+.srow:last-child{margin-bottom:0}
+.ch{width:14px;font-weight:700;font-size:.85rem}
+.ch.r{color:#f87171}.ch.g{color:#4ade80}.ch.b{color:#60a5fa}
+input[type=range]{flex:1;height:5px;border-radius:3px;outline:none;cursor:pointer;-webkit-appearance:none;appearance:none;background:#2a2a3e}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:16px;height:16px;border-radius:50%;background:#fff;cursor:pointer}
+#sR{accent-color:#f87171}#sG{accent-color:#4ade80}#sB{accent-color:#60a5fa}#sBri{accent-color:#8ab4f8}
+.val{width:30px;text-align:right;font-size:.8rem;color:#778}
+
+/* timer */
+.trow{display:flex;gap:8px;align-items:center}
+input[type=number]{flex:1;background:#0f1f40;border:1px solid #2a3a5e;color:#dde;border-radius:8px;padding:9px 12px;font-size:.95rem}
+input[type=number]:focus{outline:1px solid #8ab4f8}
+button{background:#0f1f40;border:1px solid #8ab4f844;color:#8ab4f8;border-radius:8px;padding:9px 14px;cursor:pointer;font-size:.85rem;transition:background .15s}
+button:hover{background:#1a3060}
+button.stop{color:#f87171;border-color:#f8717144}
+button.stop:hover{background:#3a1020}
+#tStatus{font-size:.82rem;color:#f0a500;margin-top:7px;min-height:18px}
+
+/* status */
+#status{text-align:center;font-size:.72rem;color:#445;margin-top:18px}
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>RGB LED Controller</h1>
+
+  <!-- Power -->
+  <div class="section">
+    <div class="row">
+      <span class="label" style="margin:0">Power</span>
+      <label class="toggle">
+        <input type="checkbox" id="power">
+        <span class="track"></span>
+      </label>
+    </div>
+  </div>
+
+  <!-- Preview -->
+  <div class="section">
+    <div class="label">Preview</div>
+    <div id="preview"></div>
+  </div>
+
+  <!-- Color picker -->
+  <div class="section">
+    <div class="label">Color Picker</div>
+    <input type="color" id="picker" value="#ff0000">
+  </div>
+
+  <!-- RGB sliders -->
+  <div class="section">
+    <div class="label">RGB Channels</div>
+    <div class="srow"><span class="ch r">R</span><input type="range" id="sR" min="0" max="255" value="255"><span class="val" id="vR">255</span></div>
+    <div class="srow"><span class="ch g">G</span><input type="range" id="sG" min="0" max="255" value="0"><span class="val" id="vG">0</span></div>
+    <div class="srow"><span class="ch b">B</span><input type="range" id="sB" min="0" max="255" value="0"><span class="val" id="vB">0</span></div>
+  </div>
+
+  <!-- Brightness -->
+  <div class="section">
+    <div class="label">Brightness</div>
+    <div class="srow">
+      <span style="font-size:1rem;width:14px">&#9788;</span>
+      <input type="range" id="sBri" min="0" max="100" value="100">
+      <span class="val" id="vBri">100%</span>
+    </div>
+  </div>
+
+  <!-- Timer -->
+  <div class="section">
+    <div class="label">Timer — turn on for N seconds</div>
+    <div class="trow">
+      <input type="number" id="tSec" min="1" max="3600" value="10" placeholder="s">
+      <button onclick="startTimer()">Start</button>
+      <button class="stop" onclick="stopTimer()">Stop</button>
+    </div>
+    <div id="tStatus"></div>
+  </div>
+
+  <div id="status">Connecting…</div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+
+/* ── API helpers ────────────────────────────────────────────────────────── */
+const post = (url, body) =>
+  fetch(url, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)})
+    .catch(()=>null);
+
+let dbt;
+const debounce = (fn, ms=130) => { clearTimeout(dbt); dbt = setTimeout(fn, ms); };
+
+/* ── Color helpers ──────────────────────────────────────────────────────── */
+const toHex = (r,g,b) => '#'+[r,g,b].map(v=>v.toString(16).padStart(2,'0')).join('');
+const fromHex = h => ({r:parseInt(h.slice(1,3),16), g:parseInt(h.slice(3,5),16), b:parseInt(h.slice(5,7),16)});
+
+function syncPreview(){
+  const r=+$('sR').value, g=+$('sG').value, b=+$('sB').value;
+  $('preview').style.background = toHex(r,g,b);
+  $('picker').value = toHex(r,g,b);
+  $('vR').textContent=r; $('vG').textContent=g; $('vB').textContent=b;
+}
+
+/* ── Event bindings ─────────────────────────────────────────────────────── */
+$('power').addEventListener('change', () => post('/power', {on: $('power').checked}));
+
+$('picker').addEventListener('input', () => {
+  const {r,g,b} = fromHex($('picker').value);
+  $('sR').value=r; $('sG').value=g; $('sB').value=b;
+  syncPreview();
+  debounce(() => post('/color', {r,g,b}));
+});
+
+['sR','sG','sB'].forEach(id => $('id') , $('sR').addEventListener('input', ()=>{
+  syncPreview();
+  debounce(()=>post('/color',{r:+$('sR').value, g:+$('sG').value, b:+$('sB').value}));
+}));
+$('sG').addEventListener('input', ()=>{ syncPreview(); debounce(()=>post('/color',{r:+$('sR').value,g:+$('sG').value,b:+$('sB').value})); });
+$('sB').addEventListener('input', ()=>{ syncPreview(); debounce(()=>post('/color',{r:+$('sR').value,g:+$('sG').value,b:+$('sB').value})); });
+
+$('sBri').addEventListener('input', () => {
+  $('vBri').textContent = $('sBri').value+'%';
+  debounce(()=>post('/brightness',{value:+$('sBri').value}));
+});
+
+function startTimer(){ post('/timer',{seconds:+$('tSec').value||10}); }
+function stopTimer() { post('/timer',{seconds:0}); $('tStatus').textContent=''; }
+
+/* ── State poll ─────────────────────────────────────────────────────────── */
+async function pollState(){
+  let s;
+  try { s = await fetch('/state').then(r=>r.json()); } catch { $('status').textContent='Connection lost…'; return; }
+
+  $('power').checked   = s.on;
+  $('sR').value        = s.r;
+  $('sG').value        = s.g;
+  $('sB').value        = s.b;
+  $('sBri').value      = s.brightness;
+  $('vR').textContent  = s.r;
+  $('vG').textContent  = s.g;
+  $('vB').textContent  = s.b;
+  $('vBri').textContent= s.brightness+'%';
+  $('preview').style.background = toHex(s.r,s.g,s.b);
+  $('picker').value    = toHex(s.r,s.g,s.b);
+  $('tStatus').textContent = s.timer_remaining > 0 ? `⏱ Turns off in ${s.timer_remaining}s` : '';
+  $('status').textContent  = 'ESP32 RGB Controller — connected';
+}
+
+pollState();
+setInterval(pollState, 2000);
+</script>
+</body>
+</html>
